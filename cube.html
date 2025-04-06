@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Crystall Cubic Cell Viewer (Final Version)</title>
+  <!-- Import map: map "three" to its module URL -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.148.0/build/three.module.js"
+    }
+  }
+  </script>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      height: 100vh;
+    }
+    #container {
+      flex: 3;
+      position: relative;
+      background-color: #e0e0e0;
+    }
+    #controls {
+      flex: 1;
+      padding: 10px;
+      background-color: #f0f0f0;
+      overflow-y: auto;
+    }
+    .menu-block {
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #ccc;
+    }
+    h2, h3 {
+      margin: 10px 0 5px;
+    }
+    ul {
+      list-style: none;
+      padding: 0;
+    }
+    li {
+      margin-bottom: 5px;
+      background: #fff;
+      padding: 5px;
+      border: 1px solid #ccc;
+    }
+    .editForm {
+      margin-top: 5px;
+    }
+    .editForm input {
+      display: block;
+      margin-bottom: 5px;
+    }
+    button {
+      margin: 2px;
+    }
+  </style>
+</head>
+<body>
+  <div id="container"></div>
+  <div id="controls">
+    <!-- Basic Vectors -->
+    <div class="menu-block">
+      <h2>Basic Vectors</h2>
+      <label><input type="checkbox" id="base100" checked> [100]</label>
+      <label><input type="checkbox" id="base010" checked> [010]</label>
+      <label><input type="checkbox" id="base001" checked> [001]</label>
+    </div>
+    
+    <!-- Add User Vector -->
+    <div class="menu-block">
+      <h2>Add Vector</h2>
+      <label for="millerInput">Miller Indices (use []):</label>
+      <input type="text" id="millerInput" placeholder="[hkl] e.g. [111] or [-1,-1,0]">
+      <label for="vectorColor">Vector Color:</label>
+      <input type="color" id="vectorColor" value="#ff0000">
+      <label for="vectorLabel">Vector Label (optional):</label>
+      <input type="text" id="vectorLabel" placeholder="Label text">
+      <button id="addVectorButton">Add Vector</button>
+    </div>
+    
+    <!-- User-added Vectors List -->
+    <div class="menu-block">
+      <h2>User-added Vectors</h2>
+      <ul id="vectorList"></ul>
+    </div>
+    
+    <!-- Add User Plane -->
+    <div class="menu-block">
+      <h2>Add Plane</h2>
+      <label for="millerPlaneInput">Miller Indices (use () ):</label>
+      <input type="text" id="millerPlaneInput" placeholder="(hkl) e.g. (110) or (-1,-1,0)">
+      <label for="planeColor">Plane Color:</label>
+      <input type="color" id="planeColor" value="#00ff00">
+      <button id="addPlaneButton">Add Plane</button>
+    </div>
+    
+    <!-- User-added Planes List -->
+    <div class="menu-block">
+      <h2>User-added Planes</h2>
+      <ul id="planeList"></ul>
+    </div>
+    
+    <!-- Intersections -->
+    <div class="menu-block">
+      <h2>Intersections</h2>
+      <h3>Cube–Plane Intersections</h3>
+      <ul id="cubePlaneIntersectionList"></ul>
+      <h3>Plane–Plane Intersections</h3>
+      <ul id="planePlaneIntersectionList"></ul>
+    </div>
+
+    <!-- Data Persistence -->
+    <div class="menu-block">
+      <h2>Data Persistence</h2>
+      <button id="saveDataButton">Save Data to File</button>
+      <button id="loadDataButton">Load Data from File</button>
+      <input type="file" id="loadFileInput" accept=".json" style="display:none;">
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.148.0/examples/jsm/controls/OrbitControls.js";
+
+    // Global variables
+    let scene, camera, renderer, controls;
+    let userVectors = [];
+    let userPlanes = [];
+    let planePlaneIntersections = []; // Array of { planeIds: [id1, id2], line, visible }
+    let vectorIdCounter = 0;
+    let planeIdCounter = 0;
+    let basicVectors = {};
+    const cubeSize = 2; // Cube spans from -1 to 1
+
+    // Utility Functions
+    function createTextSprite(message, fontSize = 12, fontColor = "#000000") {
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      context.font = fontSize + "px Arial";
+      const metrics = context.measureText(message);
+      canvas.width = metrics.width;
+      canvas.height = fontSize * 1.2;
+      context.font = fontSize + "px Arial";
+      context.fillStyle = fontColor;
+      context.fillText(message, 0, fontSize);
+      const texture = new THREE.CanvasTexture(canvas);
+      const spriteMaterial = new THREE.SpriteMaterial({ map: texture, transparent: true });
+      const sprite = new THREE.Sprite(spriteMaterial);
+      sprite.scale.set(canvas.width / 100, canvas.height / 100, 1);
+      return sprite;
+    }
+
+    function parseMillerIndices(str) {
+      let comps = str.match(/-?\d+/g);
+      if (comps && comps.length === 3) return comps.map(x => parseInt(x, 10));
+      if (str.indexOf(',') === -1 && str.indexOf(' ') === -1) {
+        let result = [];
+        let i = 0;
+        while (i < str.length && result.length < 3) {
+          let numStr = "";
+          if (str[i] === '-') { numStr += '-'; i++; }
+          if (i < str.length && /[0-9]/.test(str[i])) { numStr += str[i]; i++; }
+          else break;
+          result.push(parseInt(numStr, 10));
+        }
+        if (result.length === 3) return result;
+      }
+      return null;
+    }
+
+    function computePlaneCubeIntersection(plane) {
+      const half = cubeSize / 2;
+      const vertices = [
+        new THREE.Vector3(-half, -half, -half),
+        new THREE.Vector3( half, -half, -half),
+        new THREE.Vector3( half,  half, -half),
+        new THREE.Vector3(-half,  half, -half),
+        new THREE.Vector3(-half, -half,  half),
+        new THREE.Vector3( half, -half,  half),
+        new THREE.Vector3( half,  half,  half),
+        new THREE.Vector3(-half,  half,  half)
+      ];
+      const edges = [
+        [0,1], [1,2], [2,3], [3,0],
+        [4,5], [5,6], [6,7], [7,4],
+        [0,4], [1,5], [2,6], [3,7]
+      ];
+      let points = [];
+      for (let edge of edges) {
+        const p0 = vertices[edge[0]];
+        const p1 = vertices[edge[1]];
+        const dir = new THREE.Vector3().subVectors(p1, p0);
+        const denom = plane.normal.dot(dir);
+        if (Math.abs(denom) > 1e-6) {
+          const t = -(plane.normal.dot(p0) + plane.constant) / denom;
+          if (t >= 0 && t <= 1) {
+            let pt = new THREE.Vector3().addVectors(p0, dir.multiplyScalar(t));
+            if (!points.some(p => p.distanceTo(pt) < 1e-4)) {
+              points.push(pt);
+            }
+          }
+        }
+      }
+      if (points.length < 3) return [];
+      const centroid = new THREE.Vector3();
+      points.forEach(p => centroid.add(p));
+      centroid.divideScalar(points.length);
+      let u = new THREE.Vector3(1,0,0);
+      if (Math.abs(plane.normal.dot(u)) > 0.9) u.set(0,1,0);
+      u = new THREE.Vector3().crossVectors(plane.normal, u).normalize();
+      const v = new THREE.Vector3().crossVectors(plane.normal, u).normalize();
+      points.sort((a, b) => {
+        const da = Math.atan2(a.clone().sub(centroid).dot(v), a.clone().sub(centroid).dot(u));
+        const db = Math.atan2(b.clone().sub(centroid).dot(v), b.clone().sub(centroid).dot(u));
+        return da - db;
+      });
+      return points;
+    }
+
+    // Intersection Functions
+    function updatePlaneIntersection(planeData) {
+      if (planeData.intersectionLine) {
+        scene.remove(planeData.intersectionLine);
+        planeData.intersectionLine = null;
+      }
+      if (planeData.cubeIntersectionVisible === undefined) {
+        planeData.cubeIntersectionVisible = true;
+      }
+      const points = computePlaneCubeIntersection(planeData.plane);
+      if (points.length >= 3) {
+        const geometry = new THREE.BufferGeometry().setFromPoints([...points, points[0]]);
+        const material = new THREE.LineDashedMaterial({
+          color: planeData.color,
+          dashSize: 0.1,
+          gapSize: 0.05
+        });
+        const line = new THREE.Line(geometry, material);
+        line.computeLineDistances();
+        line.visible = planeData.cubeIntersectionVisible;
+        planeData.intersectionLine = line;
+        scene.add(line);
+      }
+      updateIntersectionList();
+    }
+
+    function updateAllPlaneIntersections() {
+      planePlaneIntersections.forEach(inter => scene.remove(inter.line));
+      planePlaneIntersections = [];
+      for (let i = 0; i < userPlanes.length; i++) {
+        for (let j = i + 1; j < userPlanes.length; j++) {
+          let p1 = userPlanes[i].plane;
+          let p2 = userPlanes[j].plane;
+          let d = new THREE.Vector3().crossVectors(p1.normal, p2.normal);
+          if (d.length() < 1e-6) continue;
+          d.normalize();
+          let half = cubeSize / 2;
+          let tMin = -Infinity, tMax = Infinity;
+          for (let k = 0; k < 3; k++) {
+            let comp = d.getComponent(k);
+            if (Math.abs(comp) > 1e-6) {
+              let t1 = -half / comp;
+              let t2 = half / comp;
+              let candMin = Math.min(t1, t2);
+              let candMax = Math.max(t1, t2);
+              tMin = Math.max(tMin, candMin);
+              tMax = Math.min(tMax, candMax);
+            }
+          }
+          if (tMin <= tMax) {
+            let pt1 = d.clone().multiplyScalar(tMin);
+            let pt2 = d.clone().multiplyScalar(tMax);
+            let col1 = new THREE.Color(userPlanes[i].color);
+            let col2 = new THREE.Color(userPlanes[j].color);
+            let avgColor = col1.clone().lerp(col2, 0.5);
+            let material = new THREE.LineDashedMaterial({
+              color: avgColor.getHex(),
+              dashSize: 0.1,
+              gapSize: 0.05
+            });
+            let geometry = new THREE.BufferGeometry().setFromPoints([pt1, pt2]);
+            let line = new THREE.Line(geometry, material);
+            line.computeLineDistances();
+            line.visible = true;
+            scene.add(line);
+            planePlaneIntersections.push({ planeIds: [userPlanes[i].id, userPlanes[j].id], line: line, visible: true });
+          }
+        }
+      }
+      updateIntersectionList();
+    }
+
+    function updateIntersectionList() {
+      const cpList = document.getElementById("cubePlaneIntersectionList");
+      cpList.innerHTML = "";
+      userPlanes.forEach(p => {
+        if (p.intersectionLine) {
+          const li = document.createElement("li");
+          li.innerHTML = `Cube–Plane Intersection for ${p.miller}`;
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.checked = (p.cubeIntersectionVisible !== false);
+          checkbox.addEventListener("change", function() {
+            toggleCubePlaneIntersection(p.id, checkbox.checked);
+          });
+          li.prepend(checkbox);
+          cpList.appendChild(li);
+        }
+      });
+      const ppList = document.getElementById("planePlaneIntersectionList");
+      ppList.innerHTML = "";
+      planePlaneIntersections.forEach((inter, idx) => {
+        const li = document.createElement("li");
+        li.innerHTML = `Plane ${inter.planeIds[0]} – Plane ${inter.planeIds[1]} Intersection`;
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
+        checkbox.checked = (inter.visible !== false);
+        checkbox.addEventListener("change", function() {
+          togglePlanePlaneIntersection(idx, checkbox.checked);
+        });
+        li.prepend(checkbox);
+        ppList.appendChild(li);
+      });
+    }
+
+    function toggleCubePlaneIntersection(planeId, show) {
+      let p = userPlanes.find(x => x.id === planeId);
+      if (!p) return;
+      p.cubeIntersectionVisible = show;
+      if (p.intersectionLine) p.intersectionLine.visible = show;
+    }
+
+    function togglePlanePlaneIntersection(index, show) {
+      let inter = planePlaneIntersections[index];
+      if (inter) {
+        inter.visible = show;
+        inter.line.visible = show;
+      }
+    }
+
+    // Toggle functions for user-added vectors/planes
+    function toggleUserVector(id, show) {
+      const v = userVectors.find(v => v.id === id);
+      if (!v) return;
+      v.visible = show;
+      if (v.arrow) v.arrow.visible = show;
+      if (v.label) v.label.visible = show;
+    }
+    function toggleUserPlane(id, show) {
+      const p = userPlanes.find(p => p.id === id);
+      if (!p) return;
+      p.visible = show;
+      if (p.mesh) p.mesh.visible = show;
+      if (p.intersectionLine) p.intersectionLine.visible = show && p.cubeIntersectionVisible;
+    }
+    // Expose toggle functions to the global scope
+    window.toggleUserVector = toggleUserVector;
+    window.toggleUserPlane = toggleUserPlane;
+
+    // Save/Load functions for external file persistence
+    function saveDataToFile() {
+      const vectorsData = userVectors.map(v => ({
+        h: v.h,
+        k: v.k,
+        l: v.l,
+        color: v.color,
+        labelText: v.labelText,
+        visible: v.visible !== false
+      }));
+      const planesData = userPlanes.map(p => ({
+        h: p.h,
+        k: p.k,
+        l: p.l,
+        color: p.color,
+        cubeIntersectionVisible: p.cubeIntersectionVisible !== false,
+        visible: p.visible !== false
+      }));
+      const data = {
+        vectorIdCounter,
+        planeIdCounter,
+        vectors: vectorsData,
+        planes: planesData
+      };
+      const dataStr = JSON.stringify(data, null, 2);
+      const blob = new Blob([dataStr], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "cubeViewerData.json";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    function loadDataFromFile(data) {
+      // Remove existing vectors and planes from scene
+      userVectors.forEach(v => {
+        scene.remove(v.arrow);
+        if (v.label) scene.remove(v.label);
+      });
+      userPlanes.forEach(p => {
+        scene.remove(p.mesh);
+        if (p.intersectionLine) scene.remove(p.intersectionLine);
+      });
+      userVectors = [];
+      userPlanes = [];
+      
+      vectorIdCounter = data.vectorIdCounter;
+      planeIdCounter = data.planeIdCounter;
+      
+      data.vectors.forEach(vData => {
+        createUserVector(vData.h, vData.k, vData.l, vData.color, vData.labelText, vData.visible);
+      });
+      data.planes.forEach(pData => {
+        createUserPlane(pData.h, pData.k, pData.l, pData.color, pData.cubeIntersectionVisible, pData.visible);
+      });
+      updateVectorList();
+      updatePlaneList();
+      updateAllPlaneIntersections();
+      alert("Data loaded!");
+    }
+
+    // Attach file input listener
+    document.getElementById('loadFileInput').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(event) {
+        try {
+          const data = JSON.parse(event.target.result);
+          loadDataFromFile(data);
+        } catch (err) {
+          alert("Error loading file: " + err);
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    // Helper functions to create user vectors/planes (used by add and load)
+    function createUserVector(h, k, l, color, labelText, visible = true) {
+      const vector = new THREE.Vector3(h, k, l);
+      const len = vector.length();
+      const arrow = new THREE.ArrowHelper(vector.clone().normalize(), new THREE.Vector3(0, 0, 0), len, new THREE.Color(color).getHex(), 0.1, 0.05);
+      arrow.visible = visible;
+      scene.add(arrow);
+      let label = null;
+      if (labelText !== "") {
+        label = createTextSprite(labelText, 12, color);
+        let tip = vector.clone().normalize().multiplyScalar(len * 1.2);
+        label.position.copy(tip);
+        label.visible = visible;
+        scene.add(label);
+      }
+      const vectorData = { id: vectorIdCounter++, miller: `[${h}${k}${l}]`, h, k, l, color, labelText, arrow, label, visible };
+      userVectors.push(vectorData);
+    }
+
+    function createUserPlane(h, k, l, color, cubeIntersectionVisible = true, visible = true) {
+      const normal = new THREE.Vector3(h, k, l).normalize();
+      const planeColor = new THREE.Color(color);
+      const planeGeometry = new THREE.PlaneGeometry(2.5, 2.5);
+      const planeMaterial = new THREE.MeshBasicMaterial({
+        color: planeColor.getHex(),
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.5,
+        depthWrite: false
+      });
+      const planeMesh = new THREE.Mesh(planeGeometry, planeMaterial);
+      planeMesh.lookAt(normal);
+      planeMesh.visible = visible;
+      scene.add(planeMesh);
+      const plane = new THREE.Plane(normal, 0);
+      const planeData = {
+        id: planeIdCounter++,
+        miller: `(${h}${k}${l})`,
+        h, k, l,
+        color,
+        mesh: planeMesh,
+        plane: plane,
+        intersectionLine: null,
+        cubeIntersectionVisible,
+        visible
+      };
+      userPlanes.push(planeData);
+      updatePlaneIntersection(planeData);
+      updateAllPlaneIntersections();
+    }
+
+    // User Vector Functions
+    function addUserVector() {
+      let input = document.getElementById('millerInput').value.trim();
+      if (!input) return;
+      if (input.startsWith('[') && input.endsWith(']')) input = input.slice(1, -1);
+      let indices = parseMillerIndices(input);
+      if (!indices) { alert("Enter three Miller indices, e.g. [111] or [-1,-1,0]"); return; }
+      const [h, k, l] = indices;
+      const colStr = document.getElementById('vectorColor').value;
+      let labelText = document.getElementById('vectorLabel').value.trim();
+      createUserVector(h, k, l, colStr, labelText, true);
+      updateVectorList();
+      document.getElementById('millerInput').value = "";
+      document.getElementById('vectorLabel').value = "";
+    }
+
+    function updateVectorList() {
+      const list = document.getElementById('vectorList');
+      list.innerHTML = "";
+      userVectors.forEach(v => {
+        const li = document.createElement('li');
+        li.innerHTML = `<input type="checkbox" onchange="toggleUserVector(${v.id}, this.checked)" ${v.visible ? "checked" : ""}>
+          <span style="color:${v.color}">${v.miller} ${v.labelText}</span>
+          <button onclick="editUserVector(${v.id})">Edit</button>
+          <button onclick="deleteUserVector(${v.id})">Delete</button>
+          <div class="editForm" id="editVectorForm${v.id}" style="display:none;">
+            <label>Miller Indices:</label>
+            <input type="text" id="editMiller${v.id}" value="${v.miller}">
+            <label>Color:</label>
+            <input type="color" id="editVectorColor${v.id}" value="${v.color}">
+            <label>Label:</label>
+            <input type="text" id="editVectorLabel${v.id}" value="${v.labelText}">
+            <button onclick="saveUserVector(${v.id})">Save</button>
+            <button onclick="cancelEditVector(${v.id})">Cancel</button>
+          </div>`;
+        list.appendChild(li);
+      });
+    }
+    window.editUserVector = function(id) {
+      document.getElementById(`editVectorForm${id}`).style.display = "block";
+    }
+    window.cancelEditVector = function(id) {
+      document.getElementById(`editVectorForm${id}`).style.display = "none";
+    }
+    window.saveUserVector = function(id) {
+      const v = userVectors.find(v => v.id === id);
+      if (!v) return;
+      const newMillerStr = document.getElementById(`editMiller${id}`).value.trim();
+      let miller = newMillerStr;
+      if (miller.startsWith('[') && miller.endsWith(']')) miller = miller.slice(1, -1);
+      let indices = parseMillerIndices(miller);
+      if (!indices) { alert("Enter three Miller indices, e.g. [111] or [-1,-1,0]"); return; }
+      const [h, k, l] = indices;
+      const newColor = document.getElementById(`editVectorColor${id}`).value;
+      const newLabel = document.getElementById(`editVectorLabel${id}`).value.trim();
+      scene.remove(v.arrow);
+      if (v.label) scene.remove(v.label);
+      const vector = new THREE.Vector3(h, k, l);
+      const len = vector.length();
+      const arrow = new THREE.ArrowHelper(vector.clone().normalize(), new THREE.Vector3(0, 0, 0), len, new THREE.Color(newColor).getHex(), 0.1, 0.05);
+      arrow.visible = v.visible;
+      scene.add(arrow);
+      let label = null;
+      if (newLabel !== "") {
+        label = createTextSprite(newLabel, 12, newColor);
+        let tip = vector.clone().normalize().multiplyScalar(len * 1.2);
+        label.position.copy(tip);
+        label.visible = v.visible;
+        scene.add(label);
+      }
+      v.miller = `[${h}${k}${l}]`;
+      v.h = h; v.k = k; v.l = l;
+      v.color = newColor;
+      v.labelText = newLabel;
+      v.arrow = arrow;
+      v.label = label;
+      updateVectorList();
+    }
+    window.deleteUserVector = function(id) {
+      const index = userVectors.findIndex(v => v.id === id);
+      if (index === -1) return;
+      scene.remove(userVectors[index].arrow);
+      if (userVectors[index].label) scene.remove(userVectors[index].label);
+      userVectors.splice(index, 1);
+      updateVectorList();
+    };
+
+    // User Plane Functions
+    function addUserPlane() {
+      let input = document.getElementById('millerPlaneInput').value.trim();
+      if (!input) return;
+      if (input.startsWith('(') && input.endsWith(')')) input = input.slice(1, -1);
+      let indices = parseMillerIndices(input);
+      if (!indices) { alert("Enter three Miller indices, e.g. (110) or (-1,-1,0)"); return; }
+      const [h, k, l] = indices;
+      const planeColStr = document.getElementById('planeColor').value;
+      createUserPlane(h, k, l, planeColStr, true, true);
+      updatePlaneList();
+      document.getElementById('millerPlaneInput').value = "";
+    }
+
+    function updatePlaneList() {
+      const list = document.getElementById('planeList');
+      list.innerHTML = "";
+      userPlanes.forEach(p => {
+        const li = document.createElement('li');
+        li.innerHTML = `<input type="checkbox" onchange="toggleUserPlane(${p.id}, this.checked)" ${p.visible ? "checked" : ""}>
+          <span style="color:${p.color}">${p.miller}</span>
+          <button onclick="editUserPlane(${p.id})">Edit</button>
+          <button onclick="deleteUserPlane(${p.id})">Delete</button>
+          <div class="editForm" id="editPlaneForm${p.id}" style="display:none;">
+            <label>Miller Indices:</label>
+            <input type="text" id="editPlaneMiller${p.id}" value="${p.miller}">
+            <label>Color:</label>
+            <input type="color" id="editPlaneColor${p.id}" value="${p.color}">
+            <button onclick="saveUserPlane(${p.id})">Save</button>
+            <button onclick="cancelEditPlane(${p.id})">Cancel</button>
+          </div>`;
+        list.appendChild(li);
+      });
+    }
+    window.editUserPlane = function(id) {
+      document.getElementById(`editPlaneForm${id}`).style.display = "block";
+    }
+    window.cancelEditPlane = function(id) {
+      document.getElementById(`editPlaneForm${id}`).style.display = "none";
+    }
+    window.saveUserPlane = function(id) {
+      const p = userPlanes.find(p => p.id === id);
+      if (!p) return;
+      const newMillerStr = document.getElementById(`editPlaneMiller${id}`).value.trim();
+      let miller = newMillerStr;
+      if (miller.startsWith('(') && miller.endsWith(')')) miller = miller.slice(1, -1);
+      let indices = parseMillerIndices(miller);
+      if (!indices) { alert("Enter three Miller indices, e.g. (110) or (-1,-1,0)"); return; }
+      const [h, k, l] = indices;
+      const newColor = document.getElementById(`editPlaneColor${id}`).value;
+      scene.remove(p.mesh);
+      if(p.intersectionLine){ scene.remove(p.intersectionLine); p.intersectionLine = null; }
+      const normal = new THREE.Vector3(h, k, l).normalize();
+      const planeGeometry = new THREE.PlaneGeometry(2.5, 2.5);
+      const planeMaterial = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(newColor).getHex(),
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.5,
+        depthWrite: false
+      });
+      const planeMesh = new THREE.Mesh(planeGeometry, planeMaterial);
+      planeMesh.lookAt(normal);
+      planeMesh.visible = p.visible;
+      scene.add(planeMesh);
+      p.h = h; p.k = k; p.l = l;
+      p.miller = `(${h}${k}${l})`;
+      p.color = newColor;
+      p.mesh = planeMesh;
+      p.plane = new THREE.Plane(normal, 0);
+      updatePlaneList();
+      updatePlaneIntersection(p);
+      updateAllPlaneIntersections();
+    }
+    window.deleteUserPlane = function(id) {
+      const index = userPlanes.findIndex(p => p.id === id);
+      if (index === -1) return;
+      scene.remove(userPlanes[index].mesh);
+      if(userPlanes[index].intersectionLine) scene.remove(userPlanes[index].intersectionLine);
+      userPlanes.splice(index, 1);
+      updatePlaneList();
+      updateAllPlaneIntersections();
+    };
+
+    // Scene Setup & Animation Functions
+    function onWindowResize() {
+      const containerWidth = window.innerWidth * 0.75;
+      const containerHeight = window.innerHeight;
+      renderer.setSize(containerWidth, containerHeight);
+      const aspect = containerWidth / containerHeight;
+      const d = 3;
+      camera.left = -d * aspect;
+      camera.right = d * aspect;
+      camera.top = d;
+      camera.bottom = -d;
+      camera.updateProjectionMatrix();
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+
+    // Initialization (all functions declared once)
+    function init() {
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xffffff);
+      const containerWidth = window.innerWidth * 0.75;
+      const containerHeight = window.innerHeight;
+      const aspect = containerWidth / containerHeight;
+      const d = 3;
+      camera = new THREE.OrthographicCamera(-d * aspect, d * aspect, d, -d, 1, 1000);
+      camera.position.set(5, 5, 5);
+      camera.lookAt(scene.position);
+      renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setSize(containerWidth, containerHeight);
+      document.getElementById('container').appendChild(renderer.domElement);
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      const ambientLight = new THREE.AmbientLight(0x404040);
+      scene.add(ambientLight);
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+      directionalLight.position.set(1, 1, 1);
+      scene.add(directionalLight);
+      
+      // Main Cube (Wireframe)
+      const geometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
+      const edges = new THREE.EdgesGeometry(geometry);
+      const lineMaterial = new THREE.LineBasicMaterial({ color: 0x000000 });
+      const cubeWireframe = new THREE.LineSegments(edges, lineMaterial);
+      scene.add(cubeWireframe);
+      
+      // Basic Vectors (length = 1)
+      basicVectors["100"] = addBasicVector(new THREE.Vector3(1, 0, 0), 0xff0000, "[100]");
+      basicVectors["010"] = addBasicVector(new THREE.Vector3(0, 1, 0), 0x00ff00, "[010]");
+      basicVectors["001"] = addBasicVector(new THREE.Vector3(0, 0, 1), 0x0000ff, "[001]");
+      document.getElementById('base100').addEventListener('change', (e) => { toggleBasicVector("100", e.target.checked); });
+      document.getElementById('base010').addEventListener('change', (e) => { toggleBasicVector("010", e.target.checked); });
+      document.getElementById('base001').addEventListener('change', (e) => { toggleBasicVector("001", e.target.checked); });
+      
+      // UI Listeners for Adding Vectors, Planes, and Data Persistence
+      document.getElementById('addVectorButton').addEventListener('click', addUserVector);
+      document.getElementById('addPlaneButton').addEventListener('click', addUserPlane);
+      document.getElementById('saveDataButton').addEventListener('click', saveDataToFile);
+      document.getElementById('loadDataButton').addEventListener('click', () => {
+        document.getElementById('loadFileInput').click();
+      });
+      window.addEventListener('resize', onWindowResize, false);
+    }
+
+    // Basic Vector Functions
+    function addBasicVector(direction, color, labelText) {
+      const origin = new THREE.Vector3(0, 0, 0);
+      const len = direction.length();
+      const arrow = new THREE.ArrowHelper(direction.clone().normalize(), origin, len, color, 0.1, 0.05);
+      scene.add(arrow);
+      const colorHex = "#" + color.toString(16).padStart(6, '0');
+      const label = createTextSprite(labelText, 12, colorHex);
+      let tip = direction.clone().normalize().multiplyScalar(len * 1.2);
+      label.position.copy(tip);
+      scene.add(label);
+      return { arrow, label };
+    }
+
+    function toggleBasicVector(key, show) {
+      if (show) {
+        scene.add(basicVectors[key].arrow);
+        scene.add(basicVectors[key].label);
+      } else {
+        scene.remove(basicVectors[key].arrow);
+        scene.remove(basicVectors[key].label);
+      }
+    }
+
+    // Start the Application
+    init();
+    animate();
+  </script>
+</body>
+</html>

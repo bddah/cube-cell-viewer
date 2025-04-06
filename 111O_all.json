@@ -1,0 +1,216 @@
+{
+  "vectorIdCounter": 41,
+  "planeIdCounter": 7,
+  "vectors": [
+    {
+      "h": -1,
+      "k": 2,
+      "l": -1,
+      "color": "#000000",
+      "labelText": "[-12-1]",
+      "visible": true
+    },
+    {
+      "h": 1,
+      "k": 1,
+      "l": -2,
+      "color": "#001eff",
+      "labelText": "[11-2]",
+      "visible": true
+    },
+    {
+      "h": 1,
+      "k": -2,
+      "l": 1,
+      "color": "#000000",
+      "labelText": "[1-21]",
+      "visible": true
+    },
+    {
+      "h": -2,
+      "k": 1,
+      "l": 1,
+      "color": "#000000",
+      "labelText": "[-211]",
+      "visible": true
+    },
+    {
+      "h": 0,
+      "k": 1,
+      "l": -1,
+      "color": "#000000",
+      "labelText": "[01-1]",
+      "visible": true
+    },
+    {
+      "h": -1,
+      "k": 0,
+      "l": 1,
+      "color": "#000000",
+      "labelText": "[-101]",
+      "visible": true
+    },
+    {
+      "h": -1,
+      "k": 1,
+      "l": 0,
+      "color": "#000000",
+      "labelText": "[-110]",
+      "visible": true
+    },
+    {
+      "h": -2,
+      "k": 3,
+      "l": -1,
+      "color": "#000000",
+      "labelText": "[-23-1]",
+      "visible": true
+    },
+    {
+      "h": -1,
+      "k": 3,
+      "l": -2,
+      "color": "#000000",
+      "labelText": "[-13-2]",
+      "visible": true
+    },
+    {
+      "h": 1,
+      "k": 2,
+      "l": -3,
+      "color": "#000000",
+      "labelText": "[12-3]",
+      "visible": true
+    },
+    {
+      "h": -3,
+      "k": 2,
+      "l": 1,
+      "color": "#000000",
+      "labelText": "[-321]",
+      "visible": true
+    },
+    {
+      "h": -3,
+      "k": 1,
+      "l": 2,
+      "color": "#000000",
+      "labelText": "[-312]",
+      "visible": true
+    },
+    {
+      "h": -2,
+      "k": -1,
+      "l": 3,
+      "color": "#000000",
+      "labelText": "[-2-13]",
+      "visible": true
+    },
+    {
+      "h": 1,
+      "k": 1,
+      "l": 1,
+      "color": "#ff0000",
+      "labelText": "[111]",
+      "visible": false
+    },
+    {
+      "h": -1,
+      "k": -1,
+      "l": 2,
+      "color": "#878787",
+      "labelText": "[-1-12]",
+      "visible": true
+    },
+    {
+      "h": -1,
+      "k": -2,
+      "l": 3,
+      "color": "#878787",
+      "labelText": "[-1-23]",
+      "visible": true
+    },
+    {
+      "h": 0,
+      "k": -1,
+      "l": 1,
+      "color": "#878787",
+      "labelText": "[0-11]",
+      "visible": true
+    },
+    {
+      "h": 1,
+      "k": -3,
+      "l": 2,
+      "color": "#878787",
+      "labelText": "[1-32]",
+      "visible": true
+    },
+    {
+      "h": 2,
+      "k": -3,
+      "l": 1,
+      "color": "#878787",
+      "labelText": "[2-31]",
+      "visible": true
+    },
+    {
+      "h": 1,
+      "k": -1,
+      "l": 0,
+      "color": "#878787",
+      "labelText": "[1-10]",
+      "visible": true
+    },
+    {
+      "h": 3,
+      "k": -2,
+      "l": -1,
+      "color": "#878787",
+      "labelText": "[3-2-1]",
+      "visible": true
+    },
+    {
+      "h": 2,
+      "k": -1,
+      "l": -1,
+      "color": "#878787",
+      "labelText": "[2-1-1]",
+      "visible": true
+    },
+    {
+      "h": 3,
+      "k": -1,
+      "l": -2,
+      "color": "#878787",
+      "labelText": "[3-1-2]",
+      "visible": true
+    },
+    {
+      "h": 1,
+      "k": 0,
+      "l": -1,
+      "color": "#878787",
+      "labelText": "[10-1]",
+      "visible": true
+    },
+    {
+      "h": 2,
+      "k": 1,
+      "l": -3,
+      "color": "#878787",
+      "labelText": "[21-3]",
+      "visible": true
+    }
+  ],
+  "planes": [
+    {
+      "h": 1,
+      "k": 1,
+      "l": 1,
+      "color": "#feb4f8",
+      "cubeIntersectionVisible": true,
+      "visible": true
+    }
+  ]
+}
